@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FAH Payment Admin</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,sans-serif;background:#f5f5f5;color:#111}
+.wrap{max-width:650px;margin:30px auto;padding:20px}
+.card{background:#fff;border:1px solid #ddd;border-radius:16px;padding:24px;box-shadow:0 4px 18px #0001}
+h1{margin-top:0}.field{margin:16px 0}.field label{display:block;font-weight:700;margin-bottom:7px}
+input{width:100%;padding:12px;border:1px solid #bbb;border-radius:8px;font-size:16px}
+button{width:100%;padding:13px;border:0;border-radius:8px;background:#111;color:#fff;font-size:16px;font-weight:700;cursor:pointer}
+button:disabled{opacity:.55;cursor:not-allowed}
+.secondary{background:#eee;color:#111}
+.hidden{display:none!important}
+.qr-preview{text-align:center;margin:18px 0}.qr-preview img{max-width:260px;max-height:260px;border:1px solid #ddd;border-radius:10px}
+.msg{padding:12px;border-radius:8px;margin-top:14px;line-height:1.4}
+.success{background:#e8f7e8;color:#176117}.error{background:#ffe8e8;color:#a00000}
+.note{font-size:13px;color:#666;line-height:1.5}
+.top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:15px}
+.top button{width:auto;padding:9px 14px}
+.current{border-top:1px solid #ddd;margin-top:25px;padding-top:20px}
+.current img{max-width:220px;border:1px solid #ddd;border-radius:10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<section class="card" id="login-card">
+<h1>FAH Admin Login</h1>
+<p class="note">Sign in with the Supabase admin account you created.</p>
+
+<div class="field">
+<label for="email">Admin Email</label>
+<input id="email" type="email" autocomplete="username" placeholder="your-admin-email@gmail.com">
+</div>
+
+<div class="field">
+<label for="password">Password</label>
+<input id="password" type="password" autocomplete="current-password">
+</div>
+
+<button id="login">Login</button>
+<div id="login-msg" class="msg error hidden"></div>
+</section>
+
+<section class="card hidden" id="admin-card">
+<div class="top">
+<h1 style="margin:0">FAH Payment Admin</h1>
+<button id="logout" class="secondary">Logout</button>
+</div>
+
+<p class="note">Upload your payment QR and enter the UPI ID. After saving, every customer using the customer page can receive the latest active payment details.</p>
+
+<div class="field">
+<label for="upi">UPI ID</label>
+<input id="upi" placeholder="example@upi" autocomplete="off">
+</div>
+
+<div class="field">
+<label for="receiver">Receiver Name</label>
+<input id="receiver" value="FAH - Find All Happiness">
+</div>
+
+<div class="field">
+<label for="qr">QR Image</label>
+<input id="qr" type="file" accept="image/*">
+</div>
+
+<div class="qr-preview" id="preview"></div>
+
+<button id="save">Upload & Save Payment Details</button>
+<div id="save-msg" class="msg hidden"></div>
+
+<div class="current">
+<h2>Current Payment QR</h2>
+<div id="current">Loading...</div>
+</div>
+</section>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script>
+const BUCKET = "fah-payment-qr";
+
+const loginCard = document.getElementById("login-card");
+const adminCard = document.getElementById("admin-card");
+const loginMsg = document.getElementById("login-msg");
+const saveMsg = document.getElementById("save-msg");
+const emailInput = document.getElementById("email");
+const passwordInput = document.getElementById("password");
+const upiInput = document.getElementById("upi");
+const receiverInput = document.getElementById("receiver");
+const qrInput = document.getElementById("qr");
+const preview = document.getElementById("preview");
+const current = document.getElementById("current");
+const saveButton = document.getElementById("save");
+
+function showMessage(el, text, type) {
+  el.textContent = text;
+  el.className = "msg " + type;
+  el.classList.remove("hidden");
+}
+
+function hideMessage(el) {
+  el.classList.add("hidden");
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, c => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+  }[c]));
+}
+
+async function loadCurrent() {
+  current.innerHTML = "Loading...";
+
+  const { data, error } = await supabaseClient
+    .from("payment_settings")
+    .select("upi_id,receiver_name,qr_image_url,created_at")
+    .eq("active", true)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    current.innerHTML = '<p class="error">' + escapeHtml(error.message) + '</p>';
+    return;
+  }
+
+  if (!data) {
+    current.innerHTML = '<p class="note">No payment configuration saved yet.</p>';
+    return;
+  }
+
+  upiInput.value = data.upi_id || "";
+  receiverInput.value = data.receiver_name || "FAH - Find All Happiness";
+
+  current.innerHTML =
+    '<p><b>UPI ID:</b> ' + escapeHtml(data.upi_id) + '</p>' +
+    '<img src="' + escapeHtml(data.qr_image_url) + '" alt="Current payment QR">';
+}
+
+async function showAdmin() {
+  loginCard.classList.add("hidden");
+  adminCard.classList.remove("hidden");
+  await loadCurrent();
+}
+
+async function showLogin() {
+  adminCard.classList.add("hidden");
+  loginCard.classList.remove("hidden");
+}
+
+async function checkSession() {
+  const { data } = await supabaseClient.auth.getSession();
+  if (data.session) {
+    await showAdmin();
+  } else {
+    await showLogin();
+  }
+}
+
+document.getElementById("login").addEventListener("click", async () => {
+  hideMessage(loginMsg);
+
+  const email = emailInput.value.trim();
+  const password = passwordInput.value;
+
+  if (!email || !password) {
+    showMessage(loginMsg, "Enter your admin email and password.", "error");
+    return;
+  }
+
+  const button = document.getElementById("login");
+  button.disabled = true;
+  button.textContent = "Signing in...";
+
+  const { error } = await supabaseClient.auth.signInWithPassword({
+    email,
+    password
+  });
+
+  button.disabled = false;
+  button.textContent = "Login";
+
+  if (error) {
+    showMessage(loginMsg, "Login failed: " + error.message, "error");
+    return;
+  }
+
+  passwordInput.value = "";
+  await showAdmin();
+});
+
+document.getElementById("logout").addEventListener("click", async () => {
+  await supabaseClient.auth.signOut();
+  await showLogin();
+});
+
+qrInput.addEventListener("change", () => {
+  const file = qrInput.files[0];
+  if (!file) {
+    preview.innerHTML = "";
+    return;
+  }
+
+  if (!file.type.startsWith("image/")) {
+    showMessage(saveMsg, "Please choose an image file.", "error");
+    qrInput.value = "";
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    preview.innerHTML =
+      '<img src="' + e.target.result + '" alt="QR preview">';
+  };
+  reader.readAsDataURL(file);
+});
+
+saveButton.addEventListener("click", async () => {
+  hideMessage(saveMsg);
+
+  const upi = upiInput.value.trim();
+  const receiver = receiverInput.value.trim() || "FAH - Find All Happiness";
+  const file = qrInput.files[0];
+
+  if (!upi) {
+    showMessage(saveMsg, "Please enter the UPI ID.", "error");
+    return;
+  }
+
+  if (!file) {
+    showMessage(saveMsg, "Please select the QR image.", "error");
+    return;
+  }
+
+  saveButton.disabled = true;
+  saveButton.textContent = "Saving...";
+
+  try {
+    const extension = (file.name.split(".").pop() || "png")
+      .toLowerCase().replace(/[^a-z0-9]/g, "");
+    const fileName =
+      "payment-qr-" + Date.now() + "-" +
+      Math.random().toString(36).slice(2) + "." + extension;
+
+    const upload = await supabaseClient.storage
+      .from(BUCKET)
+      .upload(fileName, file, {
+        cacheControl: "3600",
+        upsert: false
+      });
+
+    if (upload.error) throw upload.error;
+
+    const publicUrl = supabaseClient.storage
+      .from(BUCKET)
+      .getPublicUrl(fileName).data.publicUrl;
+
+    // Deactivate the previous active payment configuration.
+    const deactivate = await supabaseClient
+      .from("payment_settings")
+      .update({ active: false })
+      .eq("active", true);
+
+    if (deactivate.error) throw deactivate.error;
+
+    // Create the new active configuration.
+    const insert = await supabaseClient
+      .from("payment_settings")
+      .insert({
+        upi_id: upi,
+        receiver_name: receiver,
+        qr_image_url: publicUrl,
+        active: true
+      });
+
+    if (insert.error) throw insert.error;
+
+    showMessage(saveMsg, "Payment QR and UPI ID saved successfully.", "success");
+    qrInput.value = "";
+    preview.innerHTML = "";
+    await loadCurrent();
+
+  } catch (error) {
+    console.error(error);
+    showMessage(saveMsg, "Save failed: " + error.message, "error");
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = "Upload & Save Payment Details";
+  }
+});
+
+supabaseClient.auth.onAuthStateChange(async (event, session) => {
+  if (event === "SIGNED_OUT" || !session) {
+    await showLogin();
+  } else if (event === "SIGNED_IN") {
+    await showAdmin();
+  }
+});
+
+checkSession();
+</script>
+</body>
+</html>
