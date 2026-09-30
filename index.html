@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FAH Payment</title>
+<style>
+*{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:0;background:#f5f5f5;color:#111}
+.container{max-width:500px;margin:40px auto;padding:20px}.card{background:#fff;border:1px solid #ddd;border-radius:16px;padding:24px;text-align:center;box-shadow:0 4px 18px #00000012}
+h1{margin-top:0}.qr{display:block;width:280px;height:280px;max-width:100%;object-fit:contain;margin:20px auto;border:1px solid #ddd;border-radius:10px;cursor:pointer}
+.pay{display:inline-block;text-decoration:none;background:#111;color:#fff;padding:13px 22px;border-radius:8px;font-weight:700}
+.note{font-size:13px;color:#666;line-height:1.5}.error{color:#b00020;font-weight:700}
+</style>
+</head>
+<body>
+<div class="container">
+<div class="card">
+<h1>Pay FAH</h1>
+<div id="payment"></div>
+</div>
+</div>
+
+<script>
+const UPI_KEY = "fah_payment_upi";
+const QR_KEY = "fah_payment_qr";
+
+const upi = localStorage.getItem(UPI_KEY);
+const qr = localStorage.getItem(QR_KEY);
+const payment = document.getElementById("payment");
+
+if (!upi || !qr) {
+  payment.innerHTML =
+    '<p class="error">Payment QR is not configured yet.</p>' +
+    '<p class="note">Please contact FAH support.</p>';
+} else {
+  // No amount is embedded. Customer enters the amount inside the UPI app.
+  const upiLink =
+    "upi://pay?pa=" + encodeURIComponent(upi) +
+    "&pn=" + encodeURIComponent("FAH - Find All Happiness") +
+    "&cu=INR";
+
+  payment.innerHTML =
+    '<a href="' + upiLink + '" aria-label="Open UPI payment">' +
+      '<img class="qr" src="' + qr + '" alt="Scan to pay">' +
+    '</a>' +
+    '<a class="pay" href="' + upiLink + '">Open UPI App</a>' +
+    '<p class="note">Scan the QR code or tap the QR / button to open your UPI app. Enter the amount in your UPI app.</p>';
+}
+</script>
+</body>
+</html>
